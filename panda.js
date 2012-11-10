@@ -6,6 +6,9 @@ var request = require('request');
 var command = require('commander');
 var pandora = require('./pandora.js');
 var fileUtils = require ("file-utils");
+var log4js = require('log4js');
+log4js.loadAppender('file');
+log4js.addAppender(log4js.appenders.file('logs/pandora.log'), 'Pandora');
 
 var merge = function(a,b) {
   for(var i in b) {

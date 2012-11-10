@@ -3,15 +3,12 @@ var url = require('url');
 var util = require('util');
 var crypto = require('crypto');
 var request = require('request');
-var log4js = require('log4js');
-log4js.loadAppender('file');
-log4js.addAppender(log4js.appenders.file('logs/pandora.log'), 'Pandora');
+var logger = require('log4js').getLogger('Pandora');
 
 var Pandora = function() {
   var self = this;
   self.startTime = new Date().getTime()/1000;
-  self.logger = log4js.getLogger('Pandora');
-  self.logger.setLevel('DEBUG'); // Or higher to suppress debug
+  logger.setLevel('DEBUG'); // Or higher to suppress debug
 }
 
 Pandora.prototype.encrypt = function(plaintext) {
@@ -44,8 +41,9 @@ Pandora.prototype.decrypt = function(ciphertext) {
   return decipher.update(ciphertext, 'hex') + decipher.final('hex');
 }
 
-Pandora.prototype.invoke = function(encrypt, tls, method, query, data, callback, debug) {
+Pandora.prototype.invoke = function(encrypt, tls, method, query, data, callback, hideEncryptedData) {
   var self = this;
+  hideEncryptedData = hideEncryptedData || false; // true to override logging of plaintext data (username/password)
   if (typeof encrypt !== 'boolean') {
     throw 'Encrypt flag not specified';
   }
@@ -86,16 +84,15 @@ Pandora.prototype.invoke = function(encrypt, tls, method, query, data, callback,
         retObj.error = body.message + ' in ' + method + ' ' + self.lookupCode(body.code);
       }
     }
-    if (typeof debug === 'boolean' ? debug : true) {
-      self.logger.debug('\n' + util.inspect({
-        encrypt: encrypt ? data : encrypt,
-        tls: tls,
-        request: options,
-        response: retObj.error || retObj.response
-      }, false, null));
-    } else {
-      self.logger.debug('Log suppressed');
+    if (encrypt && hideEncryptedData) {
+      options.body = '<hidden>';
     }
+    logger.debug('\n' + util.inspect({
+      encrypt: (encrypt && !hideEncryptedData) ? data : encrypt,
+      tls: tls,
+      request: options,
+      response: retObj.error || retObj.response
+    }, false, null));
     callback(retObj.error, retObj.response);
   });
 };
@@ -126,16 +123,16 @@ Pandora.prototype.userLogin = function(user, callback) {
     "username": self.user.username,
     "password": self.user.password,
     "partnerAuthToken": self.partnerAuthToken,
-    "includePandoraOneInfo": true,
-    "includeSubscriptionExpiration": true,
-    "includeAdAttributes": true,
-    "returnStationList": true,
-    "includeStationArtUrl": true,
-    "returnGenreStations": true,
-    "includeDemographics": true,
-    "returnCapped": true,
+    //"includePandoraOneInfo": true,
+    //"includeSubscriptionExpiration": true,
+    //"includeAdAttributes": true,
+    //"returnStationList": true,
+    //"includeStationArtUrl": true,
+    //"returnGenreStations": true,
+    //"includeDemographics": true,
+    //"returnCapped": true,
     "syncTime": self.syncTime + Math.round(new Date().getTime()/1000 - self.startTime)
-  }, callback, false); // If debug is true, password will be exposed in plaintext
+  }, callback, true); // If hideEncryptedData is false, password plaintext may be exposed in log/console
 }
 
 Pandora.prototype.getStationList = function(callback) {
@@ -160,7 +157,7 @@ Pandora.prototype.getPlaylist = function(stationToken, callback) {
     user_id: self.userId
   }, {
     "userAuthToken": self.userAuthToken,
-    "additionalAudioUrl": 'HTTP_40_AAC_MONO,HTTP_64_AAC,HTTP_32_AACPLUS,HTTP_64_AACPLUS,HTTP_24_AACPLUS_ADTS,HTTP_32_AACPLUS_ADTS,HTTP_64_AACPLUS_ADTS,HTTP_128_MP3,HTTP_32_WMA',
+    //"additionalAudioUrl": 'HTTP_40_AAC_MONO,HTTP_64_AAC,HTTP_32_AACPLUS,HTTP_64_AACPLUS,HTTP_24_AACPLUS_ADTS,HTTP_32_AACPLUS_ADTS,HTTP_64_AACPLUS_ADTS,HTTP_128_MP3,HTTP_32_WMA',
     "syncTime": self.syncTime + Math.round(new Date().getTime()/1000 - self.startTime),
     "stationToken": stationToken
   }, callback);
