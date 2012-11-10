@@ -1,41 +1,50 @@
 // http://pan-do-ra-api.wikia.com/wiki/Json/5
 var url = require('url');
+var util = require('util');
 var crypto = require('crypto');
 var request = require('request');
+var log4js = require('log4js');
+log4js.loadAppender('file');
+log4js.addAppender(log4js.appenders.file('logs/pandora.log'), 'Pandora');
 
 var Pandora = function() {
-  this.startTime = new Date().getTime()/1000;
+  var self = this;
+  self.startTime = new Date().getTime()/1000;
+  self.logger = log4js.getLogger('Pandora');
+  self.logger.setLevel('DEBUG'); // Or higher to suppress debug
 }
 
 Pandora.prototype.encrypt = function(plaintext) {
+  var self = this;
   if (typeof plaintext !== 'string') {
     throw 'Invalid plaintext';
   }
   if (plaintext.length <= 0) {
     throw 'No plaintext provided';
   }
-  if (!this.partner || !this.partner.encryptPassword) {
+  if (!self.partner || !self.partner.encryptPassword) {
     throw 'Partner encrypt password required';
   }
-  var cipher = crypto.createCipheriv('BF-ECB', this.partner.encryptPassword, '');
+  var cipher = crypto.createCipheriv('BF-ECB', self.partner.encryptPassword, '');
   return cipher.update(plaintext, 'binary', 'hex') + cipher.final('hex');
 }
 
 Pandora.prototype.decrypt = function(ciphertext) {
+  var self = this;
   if (typeof ciphertext !== 'string') {
     throw 'Invalid ciphertext';
   }
   if (ciphertext.length <= 0) {
     throw 'No ciphertext provided';
   }
-  if (!this.partner || !this.partner.decryptPassword) {
+  if (!self.partner || !self.partner.decryptPassword) {
     throw 'Partner decrypt password required';
   }
-  var decipher = crypto.createDecipheriv('BF-ECB', this.partner.decryptPassword, '');
+  var decipher = crypto.createDecipheriv('BF-ECB', self.partner.decryptPassword, '');
   return decipher.update(ciphertext, 'hex') + decipher.final('hex');
 }
 
-Pandora.prototype.invoke = function(encrypt, tls, method, query, data, callback) {
+Pandora.prototype.invoke = function(encrypt, tls, method, query, data, callback, debug) {
   var self = this;
   if (typeof encrypt !== 'boolean') {
     throw 'Encrypt flag not specified';
@@ -58,21 +67,36 @@ Pandora.prototype.invoke = function(encrypt, tls, method, query, data, callback)
     body: encrypt ? self.encrypt(JSON.stringify(data)) : JSON.stringify(data)
   }
   request(options, function(error, response) {
+    var retObj = {
+      error: null,
+      response: null
+    }
     if (error) {
-      callback(error);
+      retObj.error = error;
     } else if (response.statusCode != 200) {
-      callback('Unexpected status code: ' + response.statusCode);
+      retObj.error = 'Unexpected status code: ' + response.statusCode;
     } else {
       body = JSON.parse(response.body);
       if (body.stat == 'ok') {
         if (body.result.syncTime) {
           body.result.syncTime = parseInt(self.decrypt(body.result.syncTime).substring(4), 10);
         }
-        callback(null, body.result);
+        retObj.response = body.result;
       } else {
-        callback(body.message + ' in ' + method + ' ' + self.lookupCode(body.code));
+        retObj.error = body.message + ' in ' + method + ' ' + self.lookupCode(body.code);
       }
     }
+    if (typeof debug === 'boolean' ? debug : true) {
+      self.logger.debug('\n' + util.inspect({
+        encrypt: encrypt ? data : encrypt,
+        tls: tls,
+        request: options,
+        response: retObj.error || retObj.response
+      }, false, null));
+    } else {
+      self.logger.debug('Log suppressed');
+    }
+    callback(retObj.error, retObj.response);
   });
 };
 
@@ -111,7 +135,7 @@ Pandora.prototype.userLogin = function(user, callback) {
     "includeDemographics": true,
     "returnCapped": true,
     "syncTime": self.syncTime + Math.round(new Date().getTime()/1000 - self.startTime)
-  }, callback);
+  }, callback, false); // If debug is true, password will be exposed in plaintext
 }
 
 Pandora.prototype.getStationList = function(callback) {
@@ -254,7 +278,7 @@ Pandora.prototype.lookupCode = function(code) {
     break;
   case 1002:
     str += 'INVALID_LOGIN, Wrong credentials';
-	break;
+    break;
   default:
     str += 'UNKNOWN';
   }

@@ -16,6 +16,7 @@ var merge = function(a,b) {
 
 var saveSong = function(song, callback) {
   var start = new Date().getTime();
+  pandora.debug = true;
   var songParams;
   if (song.audioUrlMap.highQuality) {
     songParams = song.audioUrlMap.highQuality;
@@ -30,19 +31,19 @@ var saveSong = function(song, callback) {
   var songFolder = new fileUtils.File(songFile.getParent());
   songFolder.createDirectory(function(error, created) {
     var r = request(songParams.audioUrl).pipe(fs.createWriteStream(songFile.getAbsolutePath()));
-	var pauseBeforeNextSong = function() {
+    var pauseBeforeNextSong = function() {
       var duration = 15*1000 - (new Date().getTime() - start);
       setTimeout(function() {
         callback();
       }, duration);
       console.log('Waiting ' + Math.round(duration/1000) + ' seconds before downloading the next song');
-	};
-	r.on('error', function() {
-	  console.log('Failed to save ' + songFile.getAbsolutePath());
+    };
+    r.on('error', function() {
+      console.log('Failed to save ' + songFile.getAbsolutePath());
       pauseBeforeNextSong();
-	});
+    });
     r.on('close', function() {
-	  console.log('Saved to ' + songFile.getAbsolutePath());
+      console.log('Saved to ' + songFile.getAbsolutePath());
       pauseBeforeNextSong();
     });
   });
@@ -67,7 +68,7 @@ async.waterfall([
   }, function(response, callback) { // prompt for station selection
     merge(pandora, response);
     /*
-	var stationNames = []
+    var stationNames = []
     pandora.stations.forEach(function(station) {
       stationNames.push(station.stationName);
     });
@@ -75,8 +76,8 @@ async.waterfall([
       pandora.station = pandora.stations[i];
       callback(null, 'done');
     });
-	*/
-	pandora.station = pandora.stations[0]; // select quick mix
+    */
+    pandora.station = pandora.stations[0]; // select quick mix
     callback(null, 'done');
   }
 ], function(error, success) { // log error, otherwise download songs
@@ -86,15 +87,15 @@ async.waterfall([
     async.whilst(function() { return true; }, function(callback) {
       pandora.getPlaylist(pandora.station.stationToken, function(error, response) {
         if (error) {
-	      callback(error);
+          callback(error);
         } else {
           async.forEachSeries(response.items, saveSong, function(error) {
-		    callback(error);
+            callback(error);
           });
         }
       });
-	}, function(error) {
-	  console.log(error);
-	});
+    }, function(error) {
+      console.log(error);
+    });
   }
 });
